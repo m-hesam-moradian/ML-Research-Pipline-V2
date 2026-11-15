@@ -135,16 +135,8 @@ def build_metrics_table(y_real, y_pred, split_idx=None):
         else:
             mape = np.nan
 
-        # COM
-        # NOTE: this is algebraically just -MBE / mean(y_true), so it will
-        # always be near zero for any reasonably calibrated model regardless
-        # of R2/RMSE -- it cannot discriminate model quality. Not a bug to fix,
-        # just don't expect it to ever separate a good model from a bad one.
-        sum_y = np.sum(y_true)
-        com = (
-            (sum_y - np.sum(y_hat)) / sum_y
-            if sum_y != 0 else np.nan
-        )
+        # COM (Comprehensive Measure from Image 4 & PDF 2: (RMSE * MAE) / R2)
+        com = (rmse * mae) / r2 if (r2 is not None and not np.isnan(r2) and r2 != 0) else np.nan
 
         # RAE
         rae = rae_metric(y_true, y_hat)
@@ -199,6 +191,10 @@ def build_metrics_table(y_real, y_pred, split_idx=None):
         "Value": compute_metrics(y_real_value, y_pred_value),
         "Value-test": compute_metrics(y_real_valte, y_pred_valte)
     }
+
+    # Composite COM for All: (1/3)*COM_train + (2/3)*COM_test per Image 4 / PDF 2
+    if not np.isnan(sets["Train"]["COM"]) and not np.isnan(sets["Test"]["COM"]):
+        sets["All"]["COM"] = (1.0 / 3.0) * sets["Train"]["COM"] + (2.0 / 3.0) * sets["Test"]["COM"]
 
     cols = [
         "Set",

@@ -1,2 +1,11 @@
 /data
 /task
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.xlsx#*
+~$*.xlsx
+catboost_info/
+.vscode/
