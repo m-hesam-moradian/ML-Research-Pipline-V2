@@ -169,7 +169,7 @@ ML-Research-Pipeline-V2/
 ├── exporters/ (Root Exporters)        # Master Excel report generators with exact styling
 │   ├── ClassificationModelToExcel.py  # Binary Classification Exporter (Accuracy, FNR, AUC, Kappa, MCC)
 │   ├── MultiClassificationModelToExcel.py # Multi-Class Classification Exporter
-│   ├── MultiClassification(prob_upbdated).py # Backward-compatible alias
+│   ├── MultiClassificationModelToExcel.py # Backward-compatible alias
 │   └── RegressionFunctionModelToExcel.py # Regression Exporter (R2, RMSE, MAE, COM, MBE, LogCosh)
 │
 ├── data/                              # Exported prediction vectors & error files (.npt format)
