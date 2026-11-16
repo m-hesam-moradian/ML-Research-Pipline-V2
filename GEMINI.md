@@ -153,8 +153,7 @@ Whenever a task prompt is provided in a new chat (e.g. starting with `Tag: BMM-E
 
 ### Step 5: Excel Report Generation & Metrics Exporter
 - **Script Selection**:
-  - MultiClass Classification $\implies$ [MultiClassificationModelToExcel.py](file:///c:/Users/Sam/Desktop/ML/MultiClassificationModelToExcel.py)
-  - Binary Classification $\implies$ [ClassificationModelToExcel.py](file:///c:/Users/Sam/Desktop/ML/ClassificationModelToExcel.py)
+  - Classification (Binary & MultiClass) $\implies$ [MultiClassificationModelToExcel.py](file:///c:/Users/Sam/Desktop/ML/MultiClassificationModelToExcel.py)
   - Regression $\implies$ [RegressionFunctionModelToExcel.py](file:///c:/Users/Sam/Desktop/ML/RegressionFunctionModelToExcel.py)
 - **Configuration Workflow**:
   - `model_name = "{Model}"` (e.g. `"{Model 1}"`, `"{Model 2}"`)

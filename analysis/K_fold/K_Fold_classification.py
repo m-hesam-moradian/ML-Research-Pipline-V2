@@ -4,7 +4,7 @@ import os
 import win32com.client
 from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, matthews_corrcoef
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, matthews_corrcoef, cohen_kappa_score
 from sklearn.linear_model import LogisticRegression
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis, QuadraticDiscriminantAnalysis
 from sklearn.tree import DecisionTreeClassifier
@@ -38,7 +38,7 @@ def open_excel_file(filepath):
         print("Note: Could not auto-open Excel GUI:", e)
 
 def main():
-    filepath = r"d:\ML\task\Data.xlsx"
+    filepath = r"task/Data.xlsx"
     close_excel_file(filepath)
     sheet_name = "SMOTE_ENC_Data"
 
@@ -84,11 +84,16 @@ def main():
             else:
                 pred = m.predict(X_te)
 
+            K = len(np.unique(y))
+            avg_mode = 'binary' if K == 2 else 'macro'
+
             acc = float(accuracy_score(y_te, pred))
-            prec = float(precision_score(y_te, pred, average='weighted', zero_division=0))
-            rec = float(recall_score(y_te, pred, average='weighted', zero_division=0))
-            f1 = float(f1_score(y_te, pred, average='weighted', zero_division=0))
+            prec = float(precision_score(y_te, pred, average=avg_mode, zero_division=0))
+            rec = float(recall_score(y_te, pred, average=avg_mode, zero_division=0))
+            f1 = float(f1_score(y_te, pred, average=avg_mode, zero_division=0))
             mcc = float(matthews_corrcoef(y_te, pred))
+            kappa = float(cohen_kappa_score(y_te, pred))
+            cwe = float(1.0 - rec)
 
             fold_records.append({
                 "Fold": fold_idx,
@@ -96,7 +101,9 @@ def main():
                 "Precision": round(prec, 6),
                 "Recall": round(rec, 6),
                 "F1 Score": round(f1, 6),
-                "MCC": round(mcc, 6)
+                "MCC": round(mcc, 6),
+                "Kappa": round(kappa, 6),
+                "Class-Wise Error": round(cwe, 6)
             })
 
         df_m = pd.DataFrame(fold_records)

@@ -186,8 +186,9 @@ def load_models_from_excel(path, sheet_name="Probs"):
 # -------------------------
 def brier_score_multiclass(y_true: np.ndarray, prob_matrix: np.ndarray, labels: List) -> float:
     """
-    Multiclass Brier score:
-      BS = mean_i sum_k (p_{ik} - y_{ik})^2
+    Authentic Brier Score:
+      - Binary (K=2): BS = (1/N) * sum((p_i - o_i)^2) in [0, 1]
+      - Multiclass (K>2): BS = (1/N) * sum_i sum_k (p_{ik} - y_{ik})^2 in [0, 2]
     """
     p = np.asarray(prob_matrix, dtype=float)
     n, K = p.shape
@@ -198,8 +199,14 @@ def brier_score_multiclass(y_true: np.ndarray, prob_matrix: np.ndarray, labels: 
         raise ValueError("y_true contains labels not found in provided labels list.")
     y_onehot = np.zeros_like(p)
     y_onehot[np.arange(n), y_idx] = 1.0
-    diffsq = (p - y_onehot) ** 2
-    return float(diffsq.sum(axis=1).mean())
+
+    if K == 2:
+        # Binary Brier Score: (p_pos - y_pos)^2 in [0, 1]
+        return float(np.mean((p[:, 1] - y_onehot[:, 1]) ** 2))
+    else:
+        # Multiclass Brier Score: sum over classes in [0, 2]
+        diffsq = (p - y_onehot) ** 2
+        return float(diffsq.sum(axis=1).mean())
 
 def brier_decomposition_binary(y_true: np.ndarray, prob_pos: np.ndarray, n_bins: int = 10, strategy: str = "quantile") -> Dict[str, float]:
     """
