@@ -38,6 +38,30 @@ Whenever a new chat is started and a task specification prompt is provided (e.g.
 
 > **Rule — PDP Sensitivity Analysis strictly on Test Partition & Best Model per Scenario**: Partial Dependence Plots (PDP) and sensitivity tables must ALWAYS be evaluated strictly on the untouched 20% holdout **Test dataset** (`Test_Data` / test partition), never on the training data. Furthermore, PDP MUST be computed specifically for the **best performing model of each scenario** (e.g., `{Model} + {Best_Optimizer}` in Scenario 1 and Scenario 2), and saved to scenario-specific sheets (e.g. `PDP_Sensitivity(With_Outlier)` and `PDP_Sensitivity(Without_Outlier)`) along with scenario-labeled plot outputs.
 
+> **Rule — Figure Drawing Standards (Times New Roman, Dual PNG+Editable SVG, Absolutely Zero Titles on Figures)**:
+> 1. **Font**: All figures MUST strictly use **`Times New Roman`** (`font.family: 'serif'`, `font.serif: ['Times New Roman', 'DejaVu Serif', 'serif']`) for all axes labels, numbers, tick marks, text, and legends.
+> 2. **Dual Output Formats**: Every figure MUST be saved in BOTH **PNG (300 DPI)** and **SVG** vector formats in `task/plots/`.
+> 3. **Editable Vector Text in SVG (`svg.fonttype = 'none'`)**: When saving SVG files, ALWAYS configure `plt.rcParams['svg.fonttype'] = 'none'`. This ensures that all text, numbers, and labels are stored as live, selectable, and editable `<text>` elements in vector software (such as Adobe Illustrator, Inkscape, or Word), NEVER flattened or converted into vector path outlines ("نه یه تیکه").
+> 4. **Zero Titles on Figures ("کلا تایتل نمیزاریم")**: NEVER include titles on the figure itself (`ax.set_title` and `fig.suptitle` must be completely omitted). The file name and manuscript caption serve as the title.
+
+> **Rule — Authentic Stratified Cross-Validation Splitting Strategy Plots (Contiguous Blocks, Never Accuracy Barplots)**:
+> When stratified cross-validation plots are requested (e.g. Condition A, Condition B, etc.):
+> 1. NEVER generate a simple accuracy barplot (`sns.barplot`).
+> 2. ALWAYS generate the official Scikit-learn cross-validation splitting strategy plot (`plot_cv_indices` format) with samples sorted by class (`y_sorted = y[np.argsort(y, kind='stable')]`) and `StratifiedKFold(shuffle=False)` so that:
+>    - The bottom `class` bar forms solid, contiguous color blocks for each target class.
+>    - Each fold row forms solid, contiguous rectangular blocks for the validation/test folds within each class, eliminating all pixel noise, barcode artifacts, and random speckling.
+>    - For nested CV (Condition B), display both Outer Folds and Inner Folds with contiguous, clearly labeled blocks.
+
+> **Rule — Multi-Workbook Architecture & Zero Duplicate Sheets (Data.xlsx vs Data2.xlsx)**:
+> When large datasets require splitting into two workbooks to prevent openpyxl delays:
+> 1. `Data.xlsx`: Strictly dedicated to DATA sheets (`Data`, `Encoded_Data`, `Encoding_Mapping`, `Train_Data`, `Test_Data`, `Data_after_TrainTestSplit`).
+> 2. `Data2.xlsx`: Strictly dedicated to MODEL RESULTS & REPORTS sheets (`Metrics_Summary`, `CV_Results_CondA`, `CV_Results_CondB`, `Hyperparam_Iterations`, `Confidence_Intervals`, `Calibration_ECE`, `PR_AUC`, `Runtime`, `System_Hardware`, and individual model sheets).
+> 3. There must be **strictly ZERO duplicate/overlapping sheets** between `Data.xlsx` and `Data2.xlsx`.
+> 4. **Full Multi-Condition Coverage**: When multiple conditions/protocols are tested (e.g., Condition A vs Condition B), ALL downstream evaluation plots (Calibration curves & ECE, Precision-Recall curves, Confidence Intervals, etc.) MUST be generated for EACH condition individually PLUS a direct comparative plot (A vs B). Never generate plots for only one condition.
+
+> **Rule — Permanent Rule Retention on User Feedback (Zero Repeated Mistakes)**:
+> Whenever the user points out a mistake, corrects a workflow, or provides new instructions/clarifications, IMMEDIATELY add the permanent rule to both `GEMINI.md` and `.agents/AGENTS.md`. Never repeat a reported mistake under any circumstances.
+
 ## 0. Primary Python Interpreter
 - Always use `C:/Python314/python.exe` to run all Python scripts and commands in this workspace.
 

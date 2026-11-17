@@ -144,7 +144,7 @@ def write_table(df, startrow, startcol, style_key, worksheet, writer, sheet_name
                 cell.number_format = "0.0000"
 
 # ==============================================================================
-# 4. AUTHENTIC REGRESSION METRICS COMPUTATION
+# 4. AUTHENTIC REGRESSION METRICS COMPUTATION (Strictly Aligned with Master Source)
 # ==============================================================================
 def rae_metric(y_true, y_hat):
     mean_y = np.mean(y_true)
@@ -152,66 +152,185 @@ def rae_metric(y_true, y_hat):
     return np.sum(np.abs(y_true - y_hat)) / denom if denom != 0 else np.nan
 
 def compute_regression_metrics(y_true, y_hat, delta=1.0):
-    """Computes all authentic regression metrics with strict zero-faking."""
+    """Computes all authentic regression metrics strictly matching the master formula specification."""
     y_true = np.asarray(y_true, dtype=float)
     y_hat = np.asarray(y_hat, dtype=float)
+    n = len(y_true)
+    if n == 0:
+        return {}
 
-    r2 = r2_score(y_true, y_hat)
-    mse = mean_squared_error(y_true, y_hat)
-    rmse = np.sqrt(mse)
-    mae = mean_absolute_error(y_true, y_hat)
-
-    # AARD / MAPE & MARE
-    non_zero = y_true != 0
-    if np.any(non_zero):
-        mare_val = np.mean(np.abs((y_true[non_zero] - y_hat[non_zero]) / y_true[non_zero]))
-        mape_val = mare_val * 100.0
-    else:
-        mare_val, mape_val = np.nan, np.nan
-    aard = mape_val
-
-    # Mean and Standard Deviation
-    mean_y = np.mean(y_true)
-    std_y = np.std(y_true, ddof=1) if len(y_true) > 1 else np.std(y_true)
-
-    cov = (rmse / mean_y * 100.0) if mean_y != 0 else np.nan
-    si = (rmse / mean_y) if mean_y != 0 else np.nan
-
-    # U95 Uncertainty
-    u95 = 1.96 * np.sqrt(std_y**2 + rmse**2)
-
-    # MBE (Mean Bias Error: y_hat - y_true)
-    mbe = np.mean(y_hat - y_true)
-
-    # LogCosh Loss (Numerically stable formula matching ln(cosh(x)))
     diff = y_hat - y_true
     abs_d = np.abs(diff)
-    log_cosh = np.mean(abs_d - np.log(2.0) + np.log1p(np.exp(-2.0 * abs_d)))
+    mean_y = float(np.mean(y_true))
+    mean_hat = float(np.mean(y_hat))
 
-    # Huber Loss
-    huber = np.mean(np.where(abs_d <= delta, 0.5 * (diff ** 2), delta * (abs_d - 0.5 * delta)))
+    # 1. MBE (Mean Bias Error): (1/n) * sum(y_hat - y_true)
+    mbe = float(np.mean(diff))
 
-    # COM (Comprehensive Measure from Image 4 & PDF 2: (RMSE * MAE) / R2)
-    com = (rmse * mae) / r2 if (r2 is not None and not np.isnan(r2) and r2 != 0) else np.nan
+    # 2. MAE (Mean Absolute Error): (1/n) * sum(|y_hat - y_true|)
+    mae = float(np.mean(abs_d))
 
-    # RAE
-    rae = rae_metric(y_true, y_hat)
+    # 3. MedAE (Median Absolute Error): median(|y_hat - y_true|)
+    medae = float(np.median(abs_d))
+
+    # 4. MSE (Mean Squared Error): (1/n) * sum((y_hat - y_true)^2)
+    mse = float(np.mean(diff ** 2))
+
+    # 5. RMSE (Root Mean Squared Error): sqrt(MSE)
+    rmse = float(np.sqrt(mse))
+
+    # 6. Huber Loss (HL): 0.5 * e^2 for |e| <= delta, else delta * (|e| - 0.5 * delta)
+    hl = float(np.mean(np.where(abs_d <= delta, 0.5 * (diff ** 2), delta * (abs_d - 0.5 * delta))))
+
+    # 7. Log-Cosh Loss (LCL): (1/n) * sum(ln(cosh(y_hat - y_true)))
+    # Numerically stable: |x| - ln(2) + ln(1 + e^(-2|x|))
+    lcl = float(np.mean(abs_d - np.log(2.0) + np.log1p(np.exp(-2.0 * abs_d))))
+
+    # Non-zero mask for relative percentage denominators
+    mask_nz = (y_true != 0)
+    has_nz = np.any(mask_nz)
+
+    # 8. MRE (Mean Relative Error): (1/n) * sum((y_hat - y_true) / y_true)
+    mre = float(np.mean(diff[mask_nz] / y_true[mask_nz])) if has_nz else np.nan
+
+    # 9. MPE (Mean Percentage Error): (100/n) * sum((y_hat - y_true) / y_true)
+    mpe = float(mre * 100.0) if not np.isnan(mre) else np.nan
+
+    # 10. MARE (Mean Absolute Relative Error): (1/n) * sum(|y_hat - y_true| / |y_true|)
+    mare = float(np.mean(abs_d[mask_nz] / np.abs(y_true[mask_nz]))) if has_nz else np.nan
+
+    # 11. MAPE (Mean Absolute Percentage Error): (100/n) * sum(|y_hat - y_true| / |y_true|)
+    mape = float(mare * 100.0) if not np.isnan(mare) else np.nan
+
+    # 12. MdAPE (Median Absolute Percentage Error): 100 * median(|y_hat - y_true| / |y_true|)
+    mdape = float(100.0 * np.median(abs_d[mask_nz] / np.abs(y_true[mask_nz]))) if has_nz else np.nan
+
+    # 13. SMAPE (Symmetric Mean Absolute Percentage Error): (100/n) * sum(2|y_hat - y_true| / (|y_true| + |y_hat|))
+    denom_smape = np.abs(y_true) + np.abs(y_hat)
+    mask_smape = (denom_smape != 0)
+    smape = float(100.0 * np.mean(np.where(mask_smape, (2.0 * abs_d) / denom_smape, 0.0)))
+
+    # 14. WAPE (Weighted Absolute Percentage Error): 100 * sum(|y_hat - y_true|) / sum(|y_true|)
+    sum_abs_y = np.sum(np.abs(y_true))
+    wape = float(100.0 * np.sum(abs_d) / sum_abs_y) if sum_abs_y != 0 else np.nan
+
+    # 15. RMSPE (Root Mean Squared Percentage Error): 100 * sqrt((1/n) * sum(((y_hat - y_true) / y_true)^2))
+    rmspe = float(100.0 * np.sqrt(np.mean((diff[mask_nz] / y_true[mask_nz]) ** 2))) if has_nz else np.nan
+
+    # 16. MAAPE (Mean Arctangent Absolute Percentage Error): (1/n) * sum(arctan(|y_hat - y_true| / |y_true|))
+    maape = float(np.mean(np.arctan(abs_d[mask_nz] / np.abs(y_true[mask_nz])))) if has_nz else np.nan
+
+    # 17. SI (Scatter Index): RMSE / |mean_y|
+    si = float(rmse / np.abs(mean_y)) if mean_y != 0 else np.nan
+
+    # 18. CV_Ratio (Coefficient of Variation of Prediction Ratios)
+    if np.sum(mask_nz) > 1:
+        r = y_hat[mask_nz] / y_true[mask_nz]
+        mean_r = np.mean(r)
+        std_r = np.std(r, ddof=1)
+        cv_ratio = float(std_r / np.abs(mean_r)) if mean_r != 0 else np.nan
+    else:
+        cv_ratio = np.nan
+
+    # 19. R² (Coefficient of Determination): 1 - sum((y_hat - y_true)^2) / sum((y_true - mean_y)^2)
+    ss_res = np.sum(diff ** 2)
+    ss_tot = np.sum((y_true - mean_y) ** 2)
+    r2 = float(1.0 - (ss_res / ss_tot)) if ss_tot != 0 else np.nan
+
+    # 20. RSE (Relative Squared Error): sum((y_hat - y_true)^2) / sum((y_true - mean_y)^2)
+    rse = float(ss_res / ss_tot) if ss_tot != 0 else np.nan
+
+    # 21. RRSE (Root Relative Squared Error): sqrt(RSE)
+    rrse = float(np.sqrt(rse)) if (rse is not None and not np.isnan(rse) and rse >= 0) else np.nan
+
+    # 22. CCC (Concordance Correlation Coefficient)
+    cov_y_yhat = np.mean((y_true - mean_y) * (y_hat - mean_hat))
+    var_y = np.mean((y_true - mean_y) ** 2)
+    var_hat = np.mean((y_hat - mean_hat) ** 2)
+    denom_ccc = var_y + var_hat + (mean_y - mean_hat) ** 2
+    ccc = float(2.0 * cov_y_yhat / denom_ccc) if denom_ccc != 0 else np.nan
+
+    # 23. Willmott's Index of Agreement (d): 1 - sum((y_hat - y_true)^2) / sum((|y_hat - mean_y| + |y_true - mean_y|)^2)
+    denom_d = np.sum((np.abs(y_hat - mean_y) + np.abs(y_true - mean_y)) ** 2)
+    d_val = float(1.0 - (ss_res / denom_d)) if denom_d != 0 else np.nan
+
+    # 24. MSLE (Mean Squared Logarithmic Error): (1/n) * sum([ln(1 + y_hat) - ln(1 + y_true)]^2)
+    valid_log = (y_true > -1.0) & (y_hat > -1.0)
+    if np.all(y_true >= 0) and np.all(y_hat >= 0):
+        msle = float(np.mean((np.log1p(y_hat) - np.log1p(y_true)) ** 2))
+    elif np.any(valid_log):
+        msle = float(np.mean((np.log(1.0 + y_hat[valid_log]) - np.log(1.0 + y_true[valid_log])) ** 2))
+    else:
+        msle = np.nan
+
+    # 25. RMSLE (Root Mean Squared Logarithmic Error): sqrt(MSLE)
+    rmsle = float(np.sqrt(msle)) if (msle is not None and not np.isnan(msle) and msle >= 0) else np.nan
+
+    # 26. MPD (Mean Poisson Deviance): (2/n) * sum(y * ln(y / y_hat) - y + y_hat)
+    valid_p = (y_true >= 0) & (y_hat > 0)
+    if np.any(valid_p):
+        yp = y_true[valid_p]
+        yhp = y_hat[valid_p]
+        terms_p = np.where(yp > 0, yp * np.log(yp / yhp), 0.0) - yp + yhp
+        mpd = float(2.0 * np.mean(terms_p))
+    else:
+        mpd = np.nan
+
+    # 27. MGD (Mean Gamma Deviance): (2/n) * sum(ln(y_hat / y) + y / y_hat - 1)
+    valid_g = (y_true > 0) & (y_hat > 0)
+    if np.any(valid_g):
+        yg = y_true[valid_g]
+        yhg = y_hat[valid_g]
+        mgd = float(2.0 * np.mean(np.log(yhg / yg) + (yg / yhg) - 1.0))
+    else:
+        mgd = np.nan
+
+    # 28. RAE (Relative Absolute Error): sum(|y_true - y_hat|) / sum(|y_true - mean_y|)
+    denom_rae = np.sum(np.abs(y_true - mean_y))
+    rae = float(np.sum(abs_d) / denom_rae) if denom_rae != 0 else np.nan
+
+    # 29. COM (Base single-partition metric: (RMSE * MAE) / R2)
+    com = float((rmse * mae) / r2) if (r2 is not None and not np.isnan(r2) and r2 != 0) else np.nan
+
+    # Backward-compatible auxiliary metrics
+    std_y = float(np.std(y_true, ddof=1)) if len(y_true) > 1 else float(np.std(y_true))
+    cov = float(rmse / mean_y * 100.0) if mean_y != 0 else np.nan
+    u95 = float(1.96 * np.sqrt(std_y**2 + rmse**2))
+    aard = mape
 
     return {
-        "R2": r2,
-        "RMSE": rmse,
+        "MBE": mbe,
         "MAE": mae,
-        "AARD": aard,
-        "MARE": mare_val,
+        "MedAE": medae,
+        "MSE": mse,
+        "RMSE": rmse,
+        "HuberLoss": hl,
+        "LogCoshLoss": lcl,
+        "MRE": mre,
+        "MPE": mpe,
+        "MARE": mare,
+        "MAPE": mape,
+        "MdAPE": mdape,
+        "SMAPE": smape,
+        "WAPE": wape,
+        "RMSPE": rmspe,
+        "MAAPE": maape,
+        "SI": si,
+        "CV_Ratio": cv_ratio,
+        "R2": r2,
+        "RSE": rse,
+        "RRSE": rrse,
+        "CCC": ccc,
+        "d": d_val,
+        "MSLE": msle,
+        "RMSLE": rmsle,
+        "MPD": mpd,
+        "MGD": mgd,
+        "RAE": rae,
+        "COM": com,
         "COV": cov,
         "U95": u95,
-        "SI": si,
-        "MBE": mbe,
-        "LogCoshLoss": log_cosh,
-        "HuberLoss": huber,
-        "MAPE": mape_val,
-        "COM": com,
-        "RAE": rae
+        "AARD": aard
     }
 
 def build_metrics_table(y_real, y_pred, split_idx=None):
@@ -236,30 +355,20 @@ def build_metrics_table(y_real, y_pred, split_idx=None):
         "Value-test": compute_regression_metrics(y_real_valte, y_pred_valte)
     }
 
-    # Weighted Composite COM for All row per Image 4 / PDF 2: (1/3)*COM_train + (2/3)*COM_test
+    # Weighted Composite COM for All row per master specification: (1/3)*COM_train + (2/3)*COM_test
     if not np.isnan(sets["Train"]["COM"]) and not np.isnan(sets["Test"]["COM"]):
         sets["All"]["COM"] = (1.0 / 3.0) * sets["Train"]["COM"] + (2.0 / 3.0) * sets["Test"]["COM"]
 
-    cols = ["Set", "R2", "RMSE", "MAE", "AARD", "MARE", "COV", "U95", "SI", "MBE", "LogCoshLoss", "HuberLoss", "MAPE", "COM", "RAE"]
+    # All 29 master metrics in exact logical sequence + auxiliary metrics
+    cols = [
+        "Set", "R2", "RMSE", "MAE", "MedAE", "MSE", "MBE", "HuberLoss", "LogCoshLoss",
+        "MRE", "MPE", "MARE", "MAPE", "MdAPE", "SMAPE", "WAPE", "RMSPE", "MAAPE",
+        "SI", "CV_Ratio", "RSE", "RRSE", "CCC", "d", "MSLE", "RMSLE", "MPD", "MGD",
+        "RAE", "COM", "COV", "U95", "AARD"
+    ]
     rows = []
     for set_name, m in sets.items():
-        rows.append([
-            set_name,
-            m["R2"],
-            m["RMSE"],
-            m["MAE"],
-            m["AARD"],
-            m["MARE"],
-            m["COV"],
-            m["U95"],
-            m["SI"],
-            m["MBE"],
-            m["LogCoshLoss"],
-            m["HuberLoss"],
-            m["MAPE"],
-            m["COM"],
-            m["RAE"]
-        ])
+        rows.append([set_name] + [m.get(col, np.nan) for col in cols[1:]])
 
     return pd.DataFrame(rows, columns=cols)
 
@@ -341,8 +450,15 @@ def main():
             writer.sheets[sheet_name] = worksheet
 
             title = sheet_name
-            merge_end_col = 14 if include_convergence else 13
-            worksheet.merge_cells(start_row=1, start_column=1, end_row=1, end_column=merge_end_col + 1)
+            params_col = len(df_value_pred.columns) + 1
+            metrics_col = params_col + len(df_params.columns) + 1
+            train_col = metrics_col + len(df_metrics.columns) + 1
+            test_col = train_col + len(df_train_data.columns) + 1
+            val_col = test_col + len(df_test_data.columns) + 1
+            conv_col = val_col + len(df_val_data.columns) + 1
+            total_end_col = (conv_col + len(df_convergence.columns)) if (include_convergence and df_convergence is not None) else (val_col + len(df_val_data.columns))
+
+            worksheet.merge_cells(start_row=1, start_column=1, end_row=1, end_column=max(total_end_col, 14))
             cell = worksheet.cell(row=1, column=1)
             cell.value = title
             cell.font = Font(bold=True)
@@ -353,11 +469,9 @@ def main():
             write_table(df_value_pred, startrow=1, startcol=0, style_key="value_pred", worksheet=worksheet, writer=writer, sheet_name=sheet_name)
 
             # Table 2: Params
-            params_col = len(df_value_pred.columns) + 1
             write_table(df_params, startrow=1, startcol=params_col, style_key="params", worksheet=worksheet, writer=writer, sheet_name=sheet_name)
 
             # Table 3: Metrics Table
-            metrics_col = params_col + len(df_params.columns) + 1
             write_table(df_metrics, startrow=1, startcol=metrics_col, style_key="metrics", worksheet=worksheet, writer=writer, sheet_name=sheet_name)
 
             # Table 4: REC Curve
@@ -369,16 +483,13 @@ def main():
             write_table(df_error, startrow=error_start_row, startcol=metrics_col, style_key="error", worksheet=worksheet, writer=writer, sheet_name=sheet_name)
 
             # Tables 6-8: Train, Test, Validation partitions
-            train_col = metrics_col + len(df_metrics.columns) + 1
             write_table(df_train_data, startrow=1, startcol=train_col, style_key="train_data", worksheet=worksheet, writer=writer, sheet_name=sheet_name)
-
-            test_col = train_col + len(df_train_data.columns) + 1
             write_table(df_test_data, startrow=1, startcol=test_col, style_key="test_data", worksheet=worksheet, writer=writer, sheet_name=sheet_name)
-
-            val_col = test_col + len(df_test_data.columns) + 1
             write_table(df_val_data, startrow=1, startcol=val_col, style_key="val_data", worksheet=worksheet, writer=writer, sheet_name=sheet_name)
 
             # Table 9: Authentic Convergence (for optimizers)
+            if include_convergence and df_convergence is not None:
+                write_table(df_convergence, startrow=1, startcol=conv_col, style_key="error", worksheet=worksheet, writer=writer, sheet_name=sheet_name)
             if include_convergence and df_convergence is not None:
                 conv_col = val_col + len(df_val_data.columns) + 1
                 write_table(df_convergence, startrow=1, startcol=conv_col, style_key="error", worksheet=worksheet, writer=writer, sheet_name=sheet_name)

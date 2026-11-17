@@ -121,20 +121,23 @@ def write_table(df, startrow, startcol, style_key, worksheet, writer, sheet_name
                 cell.number_format = "0.0000"
 
 # ==============================================================================
-# 4. AUTHENTIC CLASSIFICATION METRIC COMPUTATION (Exact Formula Implementation)
+# 4. AUTHENTIC CLASSIFICATION METRIC COMPUTATION (Strictly Aligned with Master PDF)
 # ==============================================================================
 def compute_classification_metrics(y_true, y_pred, y_prob=None, classes=None):
     """
-    Computes exact evaluation metrics based on whether problem is Binary (K=2) or Multi-Class (K>2):
-    1. Accuracy: (TP+TN)/(TP+TN+FP+FN) for Binary | (sum CM_kk)/N for Multi-Class
-    2. Precision: TP/(TP+FP) for Binary | (1/K)*sum(Precision_k) for Multi-Class
-    3. Recall: TP/(TP+FN) for Binary | (1/K)*sum(Recall_k) for Multi-Class
-    4. F1-Score: 2*P*R/(P+R) for Binary | (1/K)*sum(F1_k) for Multi-Class
-    5. MCC: 4-cell formula for Binary | Gorodkin multi-class formula for Multi-Class
-    6. Kappa: (P_0 - P_e) / (1 - P_e) with P_e = (1/N^2)*sum(p_k * n_k)
-    7. Class-wise Error: FN/(TP+FN) = 1 - Recall for Binary | (1/K)*sum(FN_k/(TP_k+FN_k)) for Multi-Class
-    8. Markedness: PPV + NPV - 1 for Binary | (1/K)*sum(PPV_k + NPV_k - 1) for Multi-Class
-    9. Brier Score: (1/N)*sum((p_i - o_i)^2) in [0, 1] for Binary | (1/N)*sum_i sum_k ((p_ik - o_ik)^2) in [0, 2] for Multi-Class
+    Computes exact evaluation metrics strictly matching the master PDF equations:
+    1. Accuracy (Eq 1): (TP+TN)/(TP+TN+FP+FN) for Binary | (sum CM_kk)/N for Multi-Class
+    2. Precision (Eq 2): TP/(TP+FP) for Binary | (1/K)*sum(Precision_k) for Multi-Class
+    3. Recall (Eq 3): TP/(TP+FN) for Binary | (1/K)*sum(Recall_k) for Multi-Class
+    4. F1-Score (Eq 4): 2*P*R/(P+R) for Binary | (1/K)*sum(F1_k) for Multi-Class
+    5. MCC (Eq 5): 4-cell formula for Binary | Gorodkin multi-class formula for Multi-Class
+    6. AUC (Eq 6): Integral TPR d(FPR) for Binary | (1/N)*sum(n_k * AUC_k) for Multi-Class
+    7. Class-wise Error (Eq 7): FN/(TP+FN) = 1 - Recall for Binary | (1/K)*sum(FN_k/(TP_k+FN_k)) for Multi-Class
+    8. Markedness (Eq 8): TP/(TP+FP) + TN/(TN+FN) - 1 for Binary | (1/K)*sum(PPV_k + NPV_k - 1) for Multi-Class
+    9. Informedness (Eq 9): TP/(TP+FN) + TN/(TN+FP) - 1 for Binary | (1/K)*sum(Recall_k + Specificity_k - 1) for Multi-Class
+    10. Specificity (Eq 10): TN/(TN+FP) for Binary | (1/K)*sum(TN_k/(TN_k+FP_k)) for Multi-Class
+    11. Brier Score (Eq 11): (1/N)*sum((p_i - o_i)^2) in [0, 1] for Binary | (1/N)*sum_i sum_k ((p_ik - o_ik)^2) in [0, 2] for Multi-Class
+    12. Kappa (Eq 12): (P_0 - P_e) / (1 - P_e) with P_e = (1/N^2)*sum(p_k * n_k)
     """
     if classes is None:
         classes = np.unique(y_true)
@@ -162,15 +165,39 @@ def compute_classification_metrics(y_true, y_pred, y_prob=None, classes=None):
         spec_k = np.where(tn_vec + fp_vec > 0, tn_vec / (tn_vec + fp_vec), 0.0)
         npv_k = np.where(tn_vec + fn_vec > 0, tn_vec / (tn_vec + fn_vec), 0.0)
         marked_k = prec_k + npv_k - 1.0
+        inf_k = rec_k + spec_k - 1.0
         cwe_k = np.where(tp_vec + fn_vec > 0, fn_vec / (tp_vec + fn_vec), 0.0)
 
-    # 1. Accuracy
+    # 1. Accuracy (Equation 1)
     acc = float(np.sum(tp_vec) / N)
 
-    # 6. Kappa: P_0 = sum(correct)/N, P_e = (1/N^2)*sum(p_k * n_k)
+    # 12. Kappa (Equation 12)
     p0 = acc
     pe = float(np.sum(p_k * n_k) / (N * N))
-    kappa = float((p0 - pe) / (1.0 - pe)) if (1.0 - pe) != 0 else 0.0
+    raw_kappa = float((p0 - pe) / (1.0 - pe)) if (1.0 - pe) != 0 else 0.0
+    kappa = float(np.clip(raw_kappa, 0.0, 1.0))
+
+    # 6. AUC (Equation 6)
+    auc_val = np.nan
+    if y_prob is not None:
+        try:
+            p_arr = np.asarray(y_prob)
+            if K == 2:
+                p_pos = p_arr[:, 1] if p_arr.ndim > 1 and p_arr.shape[1] >= 2 else (p_arr.ravel() if p_arr.ndim <= 2 else p_arr)
+                fpr, tpr, _ = roc_curve((np.asarray(y_true) == classes[1]).astype(int), p_pos)
+                auc_val = float(auc(fpr, tpr))
+            else:
+                auc_list = []
+                for i, cls in enumerate(classes):
+                    y_bin = (np.asarray(y_true) == cls).astype(int)
+                    if p_arr.ndim > 1 and i < p_arr.shape[1]:
+                        fpr_k, tpr_k, _ = roc_curve(y_bin, p_arr[:, i])
+                        auc_list.append(auc(fpr_k, tpr_k))
+                if len(auc_list) == K:
+                    # Multiclass Equation (6): (1/N) * sum(n_k * AUC_k)
+                    auc_val = float(np.sum(n_k * np.array(auc_list)) / N)
+        except Exception:
+            pass
 
     if K == 2:
         # ==============================================================
@@ -181,22 +208,28 @@ def compute_classification_metrics(y_true, y_pred, y_prob=None, classes=None):
         fp = fp_vec[1]
         fn = fn_vec[1]
 
-        # Precision, Recall, F1
+        # Precision (Eq 2), Recall (Eq 3), F1 (Eq 4)
         prec = float(prec_k[1])
         rec = float(rec_k[1])
         f1 = float(f1_k[1])
 
-        # MCC: ((TP*TN) - (FP*FN)) / sqrt((TP+FP)(TP+FN)(TN+FP)(TN+FN))
+        # MCC (Eq 5): ((TP*TN) - (FP*FN)) / sqrt((TP+FP)(TP+FN)(TN+FP)(TN+FN))
         denom_mcc = np.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn))
         mcc = float(((tp * tn) - (fp * fn)) / denom_mcc) if denom_mcc > 0 else 0.0
 
-        # Class-wise error rate: FN / (TP + FN) = 1 - Recall
+        # Class-wise error rate (Eq 7): FN / (TP + FN) = 1 - Recall
         class_error = float(cwe_k[1])
 
-        # Markedness: TP/(TP+FP) + TN/(TN+FN) - 1
+        # Specificity (Eq 10): TN / (TN + FP)
+        spec = float(spec_k[1])
+
+        # Informedness (Eq 9): Recall + Specificity - 1
+        inf = float(inf_k[1])
+
+        # Markedness (Eq 8): TP/(TP+FP) + TN/(TN+FN) - 1
         markedness = float(marked_k[1])
 
-        # Brier Score Binary: (1/N)*sum((p_i - o_i)^2) in [0, 1]
+        # Brier Score Binary (Eq 11): (1/N)*sum((p_i - o_i)^2) in [0, 1]
         brier = np.nan
         if y_prob is not None:
             try:
@@ -211,24 +244,30 @@ def compute_classification_metrics(y_true, y_pred, y_prob=None, classes=None):
         # ==============================================================
         # MULTI-CLASS CLASSIFICATION SPECIFIC FORMULAS
         # ==============================================================
-        # Macro Precision, Recall, F1
+        # Macro Precision (Eq 2), Recall (Eq 3), F1 (Eq 4)
         prec = float(np.mean(prec_k))
         rec = float(np.mean(rec_k))
         f1 = float(np.mean(f1_k))
 
-        # Multiclass MCC (Gorodkin formula):
+        # Multiclass MCC (Eq 5, Gorodkin formula):
         # (N*sum(C_kk) - sum(p_k*n_k)) / sqrt((N^2 - sum(p_k^2))*(N^2 - sum(n_k^2)))
         num_mcc = (N * np.sum(tp_vec)) - np.sum(p_k * n_k)
         den_mcc = np.sqrt((N**2 - np.sum(p_k**2)) * (N**2 - np.sum(n_k**2)))
         mcc = float(num_mcc / den_mcc) if den_mcc > 0 else 0.0
 
-        # Macro Class-wise Error rate: (1/K)*sum(FN_k / (TP_k + FN_k))
+        # Macro Class-wise Error rate (Eq 7): (1/K)*sum(FN_k / (TP_k + FN_k))
         class_error = float(np.mean(cwe_k))
 
-        # Macro Markedness: (1/K)*sum(TP_k/(TP_k+FP_k) + TN_k/(TN_k+FN_k) - 1)
+        # Specificity Macro (Eq 10): (1/K)*sum(TN_k / (TN_k + FP_k))
+        spec = float(np.mean(spec_k))
+
+        # Informedness Macro (Eq 9): (1/K)*sum(Recall_k + Specificity_k - 1)
+        inf = float(np.mean(inf_k))
+
+        # Macro Markedness (Eq 8): (1/K)*sum(TP_k/(TP_k+FP_k) + TN_k/(TN_k+FN_k) - 1)
         markedness = float(np.mean(marked_k))
 
-        # Multiclass Brier Score: (1/N)*sum_i sum_k ((p_ik - o_ik)^2) in [0, 2]
+        # Multiclass Brier Score (Eq 11): (1/N)*sum_i sum_k ((p_ik - o_ik)^2) in [0, 2]
         brier = np.nan
         if y_prob is not None:
             try:
@@ -248,13 +287,16 @@ def compute_classification_metrics(y_true, y_pred, y_prob=None, classes=None):
         "MCC": mcc,
         "Kappa": kappa,
         "Class-Wise Error": class_error,
+        "Specificity": spec,
+        "Informedness": inf,
         "Markedness": markedness,
+        "AUC": auc_val,
         "Brier Score": brier
     }
 
 def build_unified_reports(y_real, y_pred, y_prob=None):
     """
-    Builds complete authentic classification reports:
+    Builds complete authentic classification reports strictly aligned with master PDF:
     1. df_combined: All, Train, Test rows + Per-class rows (One-vs-Rest for each class)
     2. roc_df: ROC curve coordinates and authentic AUC (binary single curve or multiclass OvR curves)
     3. cm_df: Confusion Matrix strictly for the Test partition
@@ -274,12 +316,16 @@ def build_unified_reports(y_real, y_pred, y_prob=None):
     m_train = compute_classification_metrics(y_real_train, y_pred_train, y_prob_train, classes=classes)
     m_test = compute_classification_metrics(y_real_test, y_pred_test, y_prob_test, classes=classes)
 
-    cols = ["Set", "Accuracy", "Precision", "Recall", "F1", "MCC", "Kappa", "Class-Wise Error", "Markedness", "Brier Score"]
+    cols = [
+        "Set", "Accuracy", "Precision", "Recall", "F1", "MCC", "Kappa",
+        "Class-Wise Error", "Specificity", "Informedness", "Markedness",
+        "AUC", "Brier Score"
+    ]
 
     df_main = pd.DataFrame([
-        ["All", *m_all.values()],
-        ["Train", *m_train.values()],
-        ["Test", *m_test.values()]
+        ["All"] + [m_all.get(c, np.nan) for c in cols[1:]],
+        ["Train"] + [m_train.get(c, np.nan) for c in cols[1:]],
+        ["Test"] + [m_test.get(c, np.nan) for c in cols[1:]]
     ], columns=cols)
 
     # 2. Per-Class Metrics Evaluated on Test Partition (One-vs-Rest)
@@ -292,36 +338,43 @@ def build_unified_reports(y_real, y_pred, y_prob=None):
         fn = cm_test[i, :].sum() - tp
         tn = cm_test.sum() - (tp + fp + fn)
 
-        # One-vs-Rest Accuracy: (TP + TN) / Total
+        # One-vs-Rest Accuracy (Eq 1): (TP + TN) / Total
         cls_acc = (tp + tn) / cm_test.sum() if cm_test.sum() > 0 else 0.0
         cls_prec = tp / (tp + fp) if (tp + fp) > 0 else 0.0
         cls_rec = tp / (tp + fn) if (tp + fn) > 0 else 0.0
         cls_f1 = (2.0 * cls_prec * cls_rec) / (cls_prec + cls_rec) if (cls_prec + cls_rec) > 0 else 0.0
-        cls_error = 1.0 - cls_rec  # FNR
+        cls_error = 1.0 - cls_rec  # FNR (Eq 7)
+        cls_spec = tn / (tn + fp) if (tn + fp) > 0 else 0.0  # Specificity (Eq 10)
+        cls_inf = cls_rec + cls_spec - 1.0  # Informedness (Eq 9)
 
         ppv = cls_prec
         npv = tn / (tn + fn) if (tn + fn) > 0 else 0.0
-        cls_markedness = ppv + npv - 1.0
+        cls_markedness = ppv + npv - 1.0  # Markedness (Eq 8)
 
         # One-vs-Rest Kappa & MCC
         y_true_bin = (y_real_test == cls).astype(int)
         y_pred_bin = (y_pred_test == cls).astype(int)
         
-        # Kappa
+        # Kappa (Eq 12)
         p0_c = cls_acc
         pe_c = float(((tp + fp) * (tp + fn) + (tn + fn) * (tn + fp)) / (cm_test.sum() ** 2)) if cm_test.sum() > 0 else 0.0
-        cls_kappa = (p0_c - pe_c) / (1.0 - pe_c) if (1.0 - pe_c) != 0 else 0.0
+        raw_cls_kappa = (p0_c - pe_c) / (1.0 - pe_c) if (1.0 - pe_c) != 0 else 0.0
+        cls_kappa = float(np.clip(raw_cls_kappa, 0.0, 1.0))
         
-        # MCC
+        # MCC (Eq 5)
         d_mcc_c = np.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn))
         cls_mcc = ((tp * tn) - (fp * fn)) / d_mcc_c if d_mcc_c > 0 else 0.0
 
-        # Per-class Brier score
+        # Per-class AUC (Eq 6) & Brier Score (Eq 11)
+        cls_auc = np.nan
         cls_brier = np.nan
         if y_prob_test is not None:
             try:
-                y_prob_c = y_prob_test[:, i] if (y_prob_test.ndim > 1 and i < y_prob_test.shape[1]) else y_prob_test
-                cls_brier = float(np.mean((y_prob_c - y_true_bin) ** 2))
+                y_prob_c = y_prob_test[:, i] if (y_prob_test.ndim > 1 and i < y_prob_test.shape[1]) else (y_prob_test if K == 2 else None)
+                if y_prob_c is not None:
+                    fpr_c, tpr_c, _ = roc_curve(y_true_bin, y_prob_c)
+                    cls_auc = float(auc(fpr_c, tpr_c))
+                    cls_brier = float(np.mean((y_prob_c - y_true_bin) ** 2))
             except Exception:
                 pass
 
@@ -334,7 +387,10 @@ def build_unified_reports(y_real, y_pred, y_prob=None):
             cls_mcc,
             cls_kappa,
             cls_error,
+            cls_spec,
+            cls_inf,
             cls_markedness,
+            cls_auc,
             cls_brier
         ])
 
@@ -460,8 +516,12 @@ def main():
         writer.sheets[sheet_name] = worksheet
 
         title = sheet_name
-        merge_end_col = 14 if include_convergence else 13
-        worksheet.merge_cells(start_row=1, start_column=1, end_row=1, end_column=merge_end_col + 1)
+        params_col = len(df_value_pred.columns) + 1
+        metrics_col = params_col + len(df_params.columns) + 1
+        conv_col = metrics_col + len(df_combined.columns) + 1
+        total_end_col = (conv_col + len(df_convergence.columns)) if (include_convergence and df_convergence is not None) else (metrics_col + len(df_combined.columns))
+
+        worksheet.merge_cells(start_row=1, start_column=1, end_row=1, end_column=max(total_end_col, 16))
         cell = worksheet.cell(row=1, column=1)
         cell.value = title
         cell.font = Font(bold=True)
@@ -472,11 +532,9 @@ def main():
         write_table(df_value_pred, startrow=1, startcol=0, style_key="value_pred", worksheet=worksheet, writer=writer, sheet_name=sheet_name)
 
         # Table 2: Model Hyperparameters
-        params_col = len(df_value_pred.columns) + 1
         write_table(df_params, startrow=1, startcol=params_col, style_key="params", worksheet=worksheet, writer=writer, sheet_name=sheet_name)
 
         # Table 3: Summary & Per-Class Metrics Table
-        metrics_col = params_col + len(df_params.columns) + 1
         write_table(df_combined, startrow=1, startcol=metrics_col, style_key="metrics", worksheet=worksheet, writer=writer, sheet_name=sheet_name)
 
         # Table 4: Confusion Matrix strictly on Test partition
@@ -488,7 +546,6 @@ def main():
 
         # Table 6: Authentic Convergence (for optimizers)
         if include_convergence and df_convergence is not None:
-            conv_col = metrics_col + len(df_combined.columns) + 1
             write_table(df_convergence, startrow=1, startcol=conv_col, style_key="error", worksheet=worksheet, writer=writer, sheet_name=sheet_name)
 
     print(f"✅ Successfully exported authentic {mode_label} classification report to sheet '{sheet_name}' in {outputPath}")
