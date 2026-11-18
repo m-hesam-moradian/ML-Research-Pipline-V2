@@ -21,11 +21,24 @@ dataPath = sys.argv[3] if len(sys.argv) > 3 else r"data/model1.npt"
 outputPath = sys.argv[4] if len(sys.argv) > 4 else r"task/Data.xlsx"
 
 # 3 Consistent Model Hyperparameters
-params = {
-    "Param_1": 100,
-    "Param_2": 10,
-    "Param_3": 0.05
-}
+if "MLR" in model_name.upper():
+    params = {
+        "C": 1.0,
+        "tol": 0.0001,
+        "max_iter": 100
+    }
+elif "LGBC" in model_name.upper():
+    params = {
+        "n_estimators": 100,
+        "learning_rate": 0.1,
+        "max_depth": -1
+    }
+else:
+    params = {
+        "Param_1": 100,
+        "Param_2": 10,
+        "Param_3": 0.05
+    }
 
 sheet_name = f"{model_name} + {optimizer_name.strip()}" if optimizer_name.strip() else model_name
 
@@ -86,14 +99,6 @@ header_styles = {
 
 def write_table(df, startrow, startcol, style_key, worksheet, writer, sheet_name):
     """Writes a DataFrame to openpyxl worksheet with borders, formatting, and styled headers."""
-    df.to_excel(
-        writer,
-        sheet_name=sheet_name,
-        startrow=startrow,
-        startcol=startcol,
-        index=False,
-    )
-
     style = header_styles.get(style_key, header_styles["default"])
     thin_border = Border(
         left=Side(style="thin", color="D3D3D3"),
@@ -102,19 +107,22 @@ def write_table(df, startrow, startcol, style_key, worksheet, writer, sheet_name
         bottom=Side(style="thin", color="D3D3D3"),
     )
 
-    for col_idx in range(len(df.columns)):
-        cell = worksheet.cell(row=startrow + 1, column=startcol + col_idx + 1)
+    # 1. Write Header row
+    for col_idx, col_name in enumerate(df.columns):
+        cell = worksheet.cell(row=startrow + 1, column=startcol + col_idx + 1, value=str(col_name))
         cell.fill = style["fill"]
         cell.font = style["font"]
         cell.alignment = style["alignment"]
         cell.border = style["border"]
 
+    # 2. Write Data rows directly into worksheet
     for r_idx in range(len(df)):
         for c_idx in range(len(df.columns)):
-            cell = worksheet.cell(row=startrow + 2 + r_idx, column=startcol + 1 + c_idx)
+            raw_val = df.iloc[r_idx, c_idx]
+            val = None if pd.isna(raw_val) else raw_val
+            cell = worksheet.cell(row=startrow + 2 + r_idx, column=startcol + 1 + c_idx, value=val)
             cell.alignment = Alignment(horizontal="center", vertical="center")
             cell.border = thin_border
-            val = cell.value
             if isinstance(val, (int, np.integer)):
                 cell.number_format = "#,##0"
             elif isinstance(val, (float, np.floating)):
@@ -549,7 +557,7 @@ def main():
             write_table(df_convergence, startrow=1, startcol=conv_col, style_key="error", worksheet=worksheet, writer=writer, sheet_name=sheet_name)
 
     print(f"✅ Successfully exported authentic {mode_label} classification report to sheet '{sheet_name}' in {outputPath}")
-    open_excel_file(outputPath)
+    # open_excel_file(outputPath)
 
 if __name__ == "__main__":
     main()

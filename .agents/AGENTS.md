@@ -59,6 +59,8 @@ Whenever a new chat is started and a task specification prompt is provided (e.g.
 > 3. There must be **strictly ZERO duplicate/overlapping sheets** between `Data.xlsx` and `Data2.xlsx`.
 > 4. **Full Multi-Condition Coverage**: When multiple conditions/protocols are tested (e.g., Condition A vs Condition B), ALL downstream evaluation plots (Calibration curves & ECE, Precision-Recall curves, Confidence Intervals, etc.) MUST be generated for EACH condition individually PLUS a direct comparative plot (A vs B). Never generate plots for only one condition.
 
+> **Rule — Absolute Zero Scaling / No StandardScaler**: Never apply `StandardScaler`, `MinMaxScaler`, or any feature scaling to features unless explicitly requested by the user. Train and evaluate all models directly on the unscaled features to preserve raw feature distributions and prevent scaling-related artifacts.
+
 > **Rule — Permanent Rule Retention on User Feedback (Zero Repeated Mistakes)**:
 > Whenever the user points out a mistake, corrects a workflow, or provides new instructions/clarifications, IMMEDIATELY add the permanent rule to both `GEMINI.md` and `.agents/AGENTS.md`. Never repeat a reported mistake under any circumstances.
 
